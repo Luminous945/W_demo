@@ -11,7 +11,7 @@ public:
 
 private:
     void x8100(std::vector<std::uint8_t> &data, int index);
-    void x0100(std::vector<std::uint8_t> &data, int index);
+    void x0100(std::vector<std::uint8_t> &data, int index,std::uint16_t msgBodyLength);
     void x0102(std::vector<std::uint8_t> &data, int index);
     void x8001(std::vector<std::uint8_t> &data, int index);
     void x0701(std::vector<std::uint8_t> &data, int index);
