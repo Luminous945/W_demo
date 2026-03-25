@@ -54,6 +54,7 @@ void ThreadPool::manager()
         if (idle > current / 2 && current > m_minThreads)
         {
             m_exitNumber.store(2);
+            // 通知线程池中的线程有任务需要处理
             m_condition.notify_all();
             unique_lock<mutex> lck(m_idsMutex);
             for (const auto& id : m_ids)
@@ -68,6 +69,7 @@ void ThreadPool::manager()
             }
             m_ids.clear();
         }
+        // 如果线程池中没有空闲线程了，并且当前线程数量没有达到最大线程数量，就添加一个线程到线程池中
         else if (idle == 0 && current < m_maxThreads)
         {
             thread t(&ThreadPool::worker, this);
@@ -78,7 +80,7 @@ void ThreadPool::manager()
         }
     }
 }
-
+// 工作线程函数
 void ThreadPool::worker()
 {
     while (!m_stop.load())
@@ -86,8 +88,10 @@ void ThreadPool::worker()
         function<void()> task = nullptr;
         {
             unique_lock<mutex> locker(m_queueMutex);
+            // 如果线程池中的任务队列为空，并且线程池没有被关闭，就等待条件变量通知线程池中的线程有任务需要处理
             while (!m_stop && m_tasks.empty())
             {
+                // 等待条件变量通知线程池中的线程有任务需要处理
                 m_condition.wait(locker);
                 if (m_exitNumber.load() > 0)
                 {
