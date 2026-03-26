@@ -1,6 +1,7 @@
 #include "pro_808_2019.h"
 #include <iostream>
 #include <sstream>
+#include <bitset>
 
 Pro_808_2019::Pro_808_2019()
 {
@@ -98,11 +99,15 @@ void Pro_808_2019::analysis(std::vector<std::uint8_t> &data)
         break;
     case 0x0200: // 位置信息查询
         printf("消息体:位置信息查询\n");
-        x0200(data, index);
+        x0200(data, index,msgBodyLength);
         break;
     case 0x0002: // 位置信息查询应答
         printf("消息体:位置信息查询应答\n");
         x0002(data, index);
+        break;
+    case 0x8300: // 文本消息下发
+        printf("消息体:文本消息下发\n");
+        x8300(data, index,msgBodyLength);
         break;
     default:
         printf("消息体:未知消息ID\n");
@@ -219,67 +224,69 @@ void Pro_808_2019::x0102(std::vector<std::uint8_t> &data, int index)
 
 void Pro_808_2019::x8001(std::vector<std::uint8_t> &data, int index)
 {
-    // 解析终端鉴权应答消息体
+    // 解析平台通用应答消息体
+    // 应答流水号
     uint16_t replyFlowId = (data[index++] << 8) | data[index++];
     printf("回复消息流水号:0x%04X\n", replyFlowId);
+    // 应答ID
+    uint16_t replyId = (data[index++]<<8) | data[index++];
+    printf("应答ID: %d\n", replyId);
+    // 结果
     uint8_t result = data[index++];
     printf("结果: %d\n", result);
 }
 
 void Pro_808_2019::x0701(std::vector<std::uint8_t> &data, int index)
 {
-    // 解析位置信息汇报消息体
-    uint32_t alarmFlag = (data[index++] << 24) | (data[index++] << 16) | (data[index++] << 8) | data[index++];
-    uint32_t statusFlag = (data[index++] << 24) | (data[index++] << 16) | (data[index++] << 8) | data[index++];
-    uint32_t latitude = (data[index++] << 24) | (data[index++] << 16) | (data[index++] << 8) | data[index++];
-    uint32_t longitude = (data[index++] << 24) | (data[index++] << 16) | (data[index++] << 8) | data[index++];
-    uint16_t elevation = (data[index++] << 8) | data[index++];
-    uint16_t speed = (data[index++] << 8) | data[index++];
-    uint16_t direction = (data[index++] << 8) | data[index++];
-    char timestamp[7] = {0};
-    for (int i = 0; i < 6; i++)
+   //电子运单上报
+   // 电子运单长度
+    uint16_t waybillLength = (data[index++] << 8) | data[index++];
+    printf("电子运单长度: %d\n", waybillLength);
+    // 电子运单内容
+    std::vector<std::uint8_t> waybillContent(waybillLength);
+    for (int i = 0; i < waybillLength; i++)
     {
-        timestamp[i] = data[index++];
+        waybillContent[i] = data[index++];
     }
-    printf("报警标志:0x%08X\n", alarmFlag);
-    printf("状态标志:0x%08X\n", statusFlag);
-    printf("纬度: %f\n", latitude / 1000000.0);
-    printf("经度: %f\n", longitude / 1000000.0);
-    printf("海拔: %d米\n", elevation);
-    printf("速度: %d公里/小时\n", speed);
-    printf("方向: %d度\n", direction);
-    printf("时间戳:20%02d-%02d-%02d %02d:%02d:%02d\n",
-           timestamp[0], timestamp[1], timestamp[2],
-           timestamp[3], timestamp[4], timestamp[5]);
+    printf("电子运单内容: ");
+    doumy(waybillContent);
 }
 
-void Pro_808_2019::x0200(std::vector<std::uint8_t> &data, int index)
+void Pro_808_2019::x0200(std::vector<std::uint8_t> &data, int index,std::uint16_t msgBodyLength)
 {
-    // 解析位置信息查询消息体
-    char queryType = data[index++];
-    printf("查询类型: %d\n", queryType);
+    //位置信息汇报
+    std::vector<std::uint8_t> locationInfo(msgBodyLength);
+    for (int i = 0; i < msgBodyLength; i++)
+    {
+        locationInfo[i] = data[index++];
+    }
+    printf("位置信息查询消息体: ");
+    doumy(locationInfo);
 }
 
 void Pro_808_2019::x0002(std::vector<std::uint8_t> &data, int index)
 {
-    // 解析位置信息查询应答消息体
-    uint32_t latitude = (data[index++] << 24) | (data[index++] << 16) | (data[index++] << 8) | data[index++];
-    uint32_t longitude = (data[index++] << 24) | (data[index++] << 16) | (data[index++] << 8) | data[index++];
-    uint16_t elevation = (data[index++] << 8) | data[index++];
-    uint16_t speed = (data[index++] << 8) | data[index++];
-    uint16_t direction = (data[index++] << 8) | data[index++];
-    char timestamp[7] = {0};
-    for (int i = 0; i < 6; i++)
-    {
-        timestamp[i] = data[index++];
-    }
-    printf("纬度: %f\n", latitude / 1000000.0);
-    printf("经度: %f\n", longitude / 1000000.0);
-    printf("海拔: %d米\n", elevation);
-    printf("速度: %d公里/小时\n", speed);
-    printf("方向: %d度\n", direction);
-    printf("时间戳:20%02d-%02d-%02d %02d:%02d:%02d\n",
-           timestamp[0], timestamp[1], timestamp[2],
-           timestamp[3], timestamp[4], timestamp[5]);
+    //终端心跳数据消息体为空
 }
 // 8100000000067046577780d7vif
+
+void Pro_808_2019::x8300(std::vector<std::uint8_t> &data, int index,std::uint16_t msgBodyLength)
+{
+    //文本消息下发
+    // 标志
+    uint8_t flag = data[index++];
+    //二进制打印
+    printf("标志: %02X\n", flag);
+    std::cout << std::bitset<8>(flag) << std::endl;
+    // 文本类型
+    uint8_t textType = data[index++];
+    printf("文本类型: %d\n", textType);
+    // 文本信息
+    std::vector<std::uint8_t> textInfo(msgBodyLength - 2);
+    for (int i = 0; i < textInfo.size(); i++)
+    {
+        textInfo[i] = data[index++];
+    }
+    printf("文本信息: ");
+    doumy(textInfo);
+}

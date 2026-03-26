@@ -15,6 +15,7 @@ private:
     void x0102(std::vector<std::uint8_t> &data, int index);
     void x8001(std::vector<std::uint8_t> &data, int index);
     void x0701(std::vector<std::uint8_t> &data, int index);
-    void x0200(std::vector<std::uint8_t> &data, int index);
+    void x0200(std::vector<std::uint8_t> &data, int index,std::uint16_t msgBodyLength);
     void x0002(std::vector<std::uint8_t> &data, int index);
+    void x8300(std::vector<std::uint8_t> &data, int index,std::uint16_t msgBodyLength);
 };
