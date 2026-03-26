@@ -5,7 +5,11 @@ project(TcpServer)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# 添加头文件目录
+include_directories(../ProtocolAnalysis)
+
 add_executable(TcpServer  
     tcpserver.cpp
     main.cpp
+    ../ProtocolAnalysis/pro_808_2019.cpp
 )
