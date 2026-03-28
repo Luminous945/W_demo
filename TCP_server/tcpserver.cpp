@@ -6,9 +6,11 @@
 #include <cstring>
 
 
+
 TcpServer::TcpServer(int port) : m_port(port), m_sockfd(-1)
 {
-
+    // 创建一个包含4个线程的线程池
+    m_threadPool = new ThreadPool(4);
 }
 
 int TcpServer::init()
@@ -32,16 +34,15 @@ int TcpServer::init()
     return 0;
 }
 
-bool TcpServer::start()
+int TcpServer::start()
 {
-    //优化：可以在这里创建一个线程来处理客户端连接，这样主线程就不会被阻塞，可以继续接受新的连接
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
-    m_clientSockfd = accept(m_sockfd, (struct sockaddr *)&client_addr, &client_len);
-    if (m_clientSockfd < 0) {
-        return false;
+    int clientfd = accept(m_sockfd, (struct sockaddr *)&client_addr, &client_len);
+    if (clientfd < 0) {
+        return 0;
     }
-    return true;
+    return clientfd;
 }
 
 void TcpServer::stop()
@@ -63,7 +64,15 @@ void TcpServer::sendMessage(const char *message)
     }
 }
 
-void TcpServer::recvMessage(std::string &msg)
+void TcpServer::sendMessage(std::vector<std::uint8_t> &data, int clientfd)
+{
+    if (clientfd >= 0) {
+        send(clientfd, data.data(), data.size(), 0);
+    }
+}
+
+
+int TcpServer::recvMessage(std::string &msg)
 {
     char buffer[1024];
 
@@ -71,7 +80,26 @@ void TcpServer::recvMessage(std::string &msg)
 
     if (n <= 0) {
         msg = "";
-        return;
+        return n;
     }
     msg.assign(buffer, n);
+    return n;
+
+}
+
+int TcpServer::recvMessage(std::vector<std::uint8_t> &data, int clientfd)
+{
+    char buffer[1024];
+
+    if(clientfd <= 0) {
+        return -1;
+    }
+    ssize_t n = recv(clientfd, buffer, sizeof(buffer), 0);
+
+    if (n <= 0) {
+        data.clear();
+        return n;
+    }
+    data.assign(buffer, buffer + n);
+    return n;
 }
