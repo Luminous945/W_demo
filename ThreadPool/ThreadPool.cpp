@@ -51,6 +51,7 @@ void ThreadPool::manager()
         this_thread::sleep_for(chrono::seconds(2));
         int idle = m_idleThreads.load();
         int current = m_curThreads.load();
+        // 如果线程池中空闲线程数量大于当前线程数量的一半，并且当前线程数量大于最小线程数量，就销毁一些线程到线程池中
         if (idle > current / 2 && current > m_minThreads)
         {
             m_exitNumber.store(2);

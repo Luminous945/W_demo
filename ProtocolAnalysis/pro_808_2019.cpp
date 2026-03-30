@@ -2,6 +2,84 @@
 #include <iostream>
 #include <sstream>
 #include <bitset>
+#include <cmath>
+
+const double PI = 3.14159265358979323846;
+const double A = 6378245.0;
+const double EE = 0.00669342162296594323;
+
+double transformLat(double x, double y)
+{
+    double ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * sqrt(fabs(x));
+
+    ret += (20.0 * sin(6.0 * x * PI) +
+            20.0 * sin(2.0 * x * PI)) *
+           2.0 / 3.0;
+
+    ret += (20.0 * sin(y * PI) +
+            40.0 * sin(y / 3.0 * PI)) *
+           2.0 / 3.0;
+
+    ret += (160.0 * sin(y / 12.0 * PI) +
+            320 * sin(y * PI / 30.0)) *
+           2.0 / 3.0;
+
+    return ret;
+}
+
+double transformLon(double x, double y)
+{
+    double ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * sqrt(fabs(x));
+
+    ret += (20.0 * sin(6.0 * x * PI) +
+            20.0 * sin(2.0 * x * PI)) *
+           2.0 / 3.0;
+
+    ret += (20.0 * sin(x * PI) +
+            40.0 * sin(x / 3.0 * PI)) *
+           2.0 / 3.0;
+
+    ret += (150.0 * sin(x / 12.0 * PI) +
+            300.0 * sin(x / 30.0 * PI)) *
+           2.0 / 3.0;
+
+    return ret;
+}
+
+bool outOfChina(double lat, double lon)
+{
+    return (lon < 72.004 || lon > 137.8347 ||
+            lat < 0.8293 || lat > 55.8271);
+}
+
+void wgs84_to_gcj02(double lat, double lon,
+                    double &mgLat, double &mgLon)
+{
+    if (outOfChina(lat, lon))
+    {
+        mgLat = lat;
+        mgLon = lon;
+        return;
+    }
+
+    double dLat = transformLat(lon - 105.0, lat - 35.0);
+    double dLon = transformLon(lon - 105.0, lat - 35.0);
+
+    double radLat = lat / 180.0 * PI;
+    double magic = sin(radLat);
+    magic = 1 - EE * magic * magic;
+
+    double sqrtMagic = sqrt(magic);
+
+    dLat = (dLat * 180.0) /
+           ((A * (1 - EE)) / (magic * sqrtMagic) * PI);
+
+    dLon = (dLon * 180.0) /
+           (A / sqrtMagic * cos(radLat) * PI);
+
+    mgLat = lat + dLat;
+    mgLon = lon + dLon;
+}
 
 Pro_808_2019::Pro_808_2019()
 {
@@ -121,13 +199,17 @@ uint16_t Pro_808_2019::analysis(std::vector<std::uint8_t> &data, messageHeader &
     printf("校验位:0x%02X\n", checksum);
     uint8_t calculatedBCC = calculateBCC(data, 1, index + msgBodyLength - 1);
     printf("计算出的BCC:0x%02X\n", calculatedBCC);
+    if(checksum==0x7D) index++; // 转义字符
+    // 标识位
+    uint8_t endFlag = data[index + msgBodyLength + 1];
     // 结束标识
-    if (data[index + msgBodyLength + 1] != 0x7E)
+    if (endFlag != 0x7E)
     {
-        printf("结束标识错误 %02X\n", data[index + msgBodyLength + 1]);
+        printf("结束标识错误 %02X\n", endFlag);
         return msgId;
     }
-    printf("结束标识:0x%02X\n", data[index + msgBodyLength + 1]);
+    printf("结束标识:0x%02X\n", endFlag);
+    data.erase(data.begin(), data.begin() + index + msgBodyLength + 2);
     return msgId;
 }
 
@@ -267,17 +349,49 @@ void Pro_808_2019::x0200(std::vector<std::uint8_t> &data, int index, std::uint16
     }
     printf("位置信息查询消息体: ");
     doumy(locationInfo);
-    //00 00 00 00 00 4C 00 03 01 58 BB 81 06 C9 51 43 00 2C 00 00 00 00 26 03 28 10 16 34 01 04 00 00 00 01 30 01 17 31 01 20 10 01 64 56 02 0A 00 FE 02 00 7B 
+    // 00 00 00 00 00 4C 00 03 01 58 BB 81 06 C9 51 43 00 2C 00 00 00 00 26 03 28 10 16 34 01 04 00 00 00 01 30 01 17 31 01 20 10 01 64 56 02 0A 00 FE 02 00 7B
     uint32_t alarmFlag = (locationInfo[0] << 24) | (locationInfo[1] << 16) | (locationInfo[2] << 8) | locationInfo[3];
     uint32_t statusFlag = (locationInfo[4] << 24) | (locationInfo[5] << 16) | (locationInfo[6] << 8) | locationInfo[7];
     printf("报警标志: 0x%08X\n", alarmFlag);
     printf("状态标志: 0x%08X\n", statusFlag);
-    //纬度
+    // ACC状态
+    bool accOn = (statusFlag & 0x00000001) != 0;
+    printf("ACC状态: %s\n", accOn ? "ON" : "OFF");
+    // 经纬度正负
+    bool longitudePositive = (statusFlag & 0x00000004) == 1; // 纬度正负，0表示北纬，1表示南纬
+    bool latitudePositive = (statusFlag & 0x00000008) == 1;  // 经度正负，0表示东经，1表示西经
+    printf("经度正负: %s\n", longitudePositive ? "东经" : "西经");
+    printf("纬度正负: %s\n", latitudePositive ? "北纬" : "南纬");
+
+    // 纬度
     uint32_t latitude = (locationInfo[8] << 24) | (locationInfo[9] << 16) | (locationInfo[10] << 8) | locationInfo[11];
-    //经度
+    // 经度
     uint32_t longitude = (locationInfo[12] << 24) | (locationInfo[13] << 16) | (locationInfo[14] << 8) | locationInfo[15];
-    printf("纬度: %f\n", latitude / 1e6);
-    printf("经度: %f\n", longitude / 1e6);
+
+    double lat;
+    double lon;
+    wgs84_to_gcj02(latitude / 1e6, longitude / 1e6, lat, lon);
+
+    if (longitudePositive)
+    {
+        printf("WGS‑84纬度: -%f\n", latitude / 1e6);
+        printf("GCJ‑02纬度: -%f\n", lat);
+    }
+    else
+    {
+        printf("WGS‑84纬度: %f\n", latitude / 1e6);
+        printf("GCJ‑02纬度: %f\n", lat);
+    }
+    if (latitudePositive)
+    {
+        printf("WGS‑84经度: -%f\n", longitude / 1e6);
+        printf("GCJ‑02经度: -%f\n", lon);
+    }
+    else
+    {
+        printf("WGS‑84经度: %f\n", longitude / 1e6);
+        printf("GCJ‑02经度: %f\n", lon);
+    }
     // 高度
     uint16_t altitude = (locationInfo[16] << 8) | locationInfo[17];
     printf("高度: %d米\n", altitude);
@@ -289,12 +403,11 @@ void Pro_808_2019::x0200(std::vector<std::uint8_t> &data, int index, std::uint16
     printf("方向: %d度\n", direction);
     // 时间
     std::vector<std::uint8_t> timestamp(6);
-    for (int i = 0; i < 6; i++)    {
+    for (int i = 0; i < 6; i++)
+    {
         timestamp[i] = locationInfo[22 + i];
     }
     printf("时间:20%02d-%02d-%02d %02d:%02d:%02d\n", timestamp[0], timestamp[1], timestamp[2], timestamp[3], timestamp[4], timestamp[5]);
-
-
 }
 
 void Pro_808_2019::x0002(std::vector<std::uint8_t> &data, int index)
